@@ -176,6 +176,10 @@ function buildPresets(label) {
 		const cat = `Input ${ch}`
 		button(`phantom_${ch}`, cat, '48V', `48V ${ch}\\n$(${label}:phantom_${ch})`, [press('phantom', { channel: ch, state: 'toggle' })], [{ feedbackId: 'phantom', options: { channel: ch }, style: { bgcolor: RED, color: WHITE } }])
 		button(`mute_${ch}`, cat, 'Mute', `IN ${ch}\\n$(${label}:mute_${ch})`, [press('mute', { channel: ch, state: 'toggle' })], [{ feedbackId: 'mute', options: { channel: ch }, style: { bgcolor: RED, color: WHITE } }])
+		// For decks without dials: the + button shows the gain, so a column of
+		// SmartGain / + / - reads top to bottom.
+		button(`gain_up_${ch}`, cat, 'Gain +1 dB', `IN ${ch}  +\\n$(${label}:gain_${ch}) dB`, [press('gain_adjust', { channel: ch, delta: 1 })], [running(ch)])
+		button(`gain_down_${ch}`, cat, 'Gain -1 dB', `IN ${ch}  -`, [press('gain_adjust', { channel: ch, delta: -1 })], [running(ch)])
 		button(
 			`gain_dial_${ch}`,
 			cat,
