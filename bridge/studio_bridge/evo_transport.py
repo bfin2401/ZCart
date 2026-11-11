@@ -184,6 +184,9 @@ class MockTransport:
         self.log: list[tuple[int, int, int, int, bytes | int]] = []
         self.registers: dict[tuple[int, int], bytes] = {}
         self.listen_seconds = 0.4
+        self.done_seconds = 0.3
+        #: "ok": a run ends through state 4. "fail": straight back to idle.
+        self.outcome = "ok"
         self._listening_until = 0.0
         for channel in range(4):
             self.registers[(0x3A00, 0x0000 | channel)] = bytes(4)  # phantom
@@ -203,17 +206,23 @@ class MockTransport:
                 raise EvoStall(errno.EPIPE, "request refused by the device (STALL)")
             return self.registers[key][: int(data)]  # type: ignore[arg-type]
         self.registers[key] = bytes(data)  # type: ignore[arg-type]
-        if key == (0x3A00, 0x0500) and bytes(data)[:1] == b"\x02":
-            self._listening_until = time.monotonic() + self.listen_seconds
+        if key == (0x3A00, 0x0500):
+            started = bytes(data)[:1] == b"\x02"
+            self._listening_until = time.monotonic() + self.listen_seconds if started else 0.0
         return b""
 
     def _finish_smartgain(self) -> None:
-        # Like the unit: listening ends by itself, and the inputs deselect.
-        if self._listening_until and time.monotonic() >= self._listening_until:
-            self._listening_until = 0.0
-            self.registers[(0x3A00, 0x0500)] = bytes(4)
-            for channel in range(4):
-                self.registers[(0x3A00, 0x0400 | channel)] = bytes(4)
+        # Like the unit: listening ends by itself; a success shows state 4
+        # for a moment, then idle, and the inputs deselect.
+        if not self._listening_until or time.monotonic() < self._listening_until:
+            return
+        if self.outcome == "ok" and time.monotonic() < self._listening_until + self.done_seconds:
+            self.registers[(0x3A00, 0x0500)] = bytes.fromhex("04000000")
+            return
+        self._listening_until = 0.0
+        self.registers[(0x3A00, 0x0500)] = bytes(4)
+        for channel in range(4):
+            self.registers[(0x3A00, 0x0400 | channel)] = bytes(4)
 
     def close(self) -> None:
         pass

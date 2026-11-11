@@ -13,6 +13,12 @@ To start: write state 1, write 1 to "selected" for each input, write state 2.
 To cancel: write state 0. While it runs the bridge reads the state register;
 anything but 0 counts as running.
 
+A run that passes through state 4 is recorded as succeeded for its inputs. A
+run that returns to 0 without it is recorded as failed, unless it was cancelled
+through the bridge. A run cancelled with the button on the unit looks the same
+as a failed one. The values seen during the last run are in `/api/state` under
+`evo.smartgain.last_states`.
+
 By hand:
 
 ```bash

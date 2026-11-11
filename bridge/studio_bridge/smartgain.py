@@ -11,7 +11,8 @@ tried on an EVO 8 and does what the button does:
     state = 2                 it starts listening
     state = 0                 cancels
 
-The state reads 2 and 3 while listening, 4 when done, then 0.
+The state reads 2 and 3 while listening, 4 when done, then 0. A run that ends
+at 0 without passing 4 was cancelled on the unit or found no usable signal.
 
 That sequence is built in (DEFAULT_*). The ``[evo.smartgain]`` table of the
 config file can replace any part of it, for another model or firmware:
@@ -34,6 +35,7 @@ config file can replace any part of it, for another model or firmware:
     index = 0x3A00
     length = 4
     idle = "00000000"              # anything else reads as "running"
+    done = "04000000"              # read at the end of a run that succeeded
 
 ``start = []`` switches SmartGain off.
 
@@ -159,9 +161,15 @@ class StatusRead:
     index: int
     length: int = 4
     idle: bytes = b""
+    #: What the register reads once a run has succeeded, just before it goes
+    #: idle again. Empty: the outcome of a run cannot be told.
+    done: bytes = b""
 
     def running(self, reply: bytes) -> bool:
         return reply != self.idle if self.idle else any(reply)
+
+    def succeeded(self, reply: bytes) -> bool:
+        return bool(self.done) and reply == self.done
 
 
 @dataclass(frozen=True)
@@ -209,7 +217,13 @@ DEFAULT_START: list[dict[str, Any]] = [
     {"value": _STATE, "index": _EU58, "data": "02000000"},
 ]
 DEFAULT_CANCEL: list[dict[str, Any]] = [{"value": _STATE, "index": _EU58, "data": "00000000"}]
-DEFAULT_STATUS: dict[str, Any] = {"value": _STATE, "index": _EU58, "length": 4, "idle": "00000000"}
+DEFAULT_STATUS: dict[str, Any] = {
+    "value": _STATE,
+    "index": _EU58,
+    "length": 4,
+    "idle": "00000000",
+    "done": "04000000",
+}
 
 
 def parse_smartgain(raw: dict[str, Any]) -> SmartGainConfig:
@@ -228,6 +242,7 @@ def parse_smartgain(raw: dict[str, Any]) -> SmartGainConfig:
                 index=int(status_raw["index"]),
                 length=int(status_raw.get("length", 4)),
                 idle=bytes.fromhex(status_raw.get("idle", "")),
+                done=bytes.fromhex(status_raw.get("done", "")),
             )
         except (KeyError, ValueError, TypeError) as error:
             raise SmartGainConfigError(f"[evo.smartgain.status]: {error!r}") from error

@@ -12,8 +12,9 @@ it runs on the same machine as Companion).
 **Actions**: SmartGain start (for one or more inputs) and cancel, 48V, input
 mute, set and adjust preamp gain.
 
-**Feedbacks**: SmartGain is running, SmartGain not set up, 48V is on, input is
-muted, EVO not connected.
+**Feedbacks**: SmartGain is running, SmartGain last result (succeeded / failed),
+SmartGain switched off, 48V is on, input is muted, EVO not connected.
 
 SmartGain works as on the unit: it listens on the chosen inputs and sets their gain.
-The button stays lit until the EVO reports it has finished.
+The preset buttons are red while the EVO listens, then green if it set the gain
+or yellow if it gave up, until the next run on that input or "clear result".

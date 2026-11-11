@@ -6,6 +6,7 @@ const WHITE = rgb(255, 255, 255)
 const BLACK = rgb(0, 0, 0)
 const GREEN = rgb(0, 190, 80)
 const RED = rgb(200, 0, 0)
+const YELLOW = rgb(255, 200, 0)
 
 const CHANNELS = [1, 2, 3, 4]
 const channelChoices = CHANNELS.map((c) => ({ id: c, label: `Input ${c}` }))
@@ -25,6 +26,14 @@ const onOffToggle = {
 const evoOf = (state) => (state && state.evo) || null
 const inputOf = (state, number) => ((evoOf(state) || {}).inputs || []).find((i) => i.channel === Number(number)) || {}
 
+// One input's last outcome; for "any input" (0) a failure anywhere wins.
+function resultOf(results, channel) {
+	results = results || {}
+	if (Number(channel) !== 0) return results[String(Number(channel))] || null
+	const all = Object.values(results)
+	return all.includes('failed') ? 'failed' : all.includes('ok') ? 'ok' : null
+}
+
 function buildActions(post) {
 	return {
 		smartgain_start: {
@@ -35,6 +44,15 @@ function buildActions(post) {
 			],
 			callback: (action) =>
 				post('/api/evo/smartgain', { action: 'start', channels: [].concat(action.options.channels).map(Number) }),
+		},
+		smartgain_clear: {
+			name: 'SmartGain: clear result',
+			description: 'Forgets the last outcome, so the button goes back to its plain colour',
+			options: [
+				{ id: 'channels', type: 'multidropdown', label: 'Inputs', default: CHANNELS, choices: channelChoices, minSelection: 1 },
+			],
+			callback: (action) =>
+				post('/api/evo/smartgain', { action: 'clear', channels: [].concat(action.options.channels).map(Number) }),
 		},
 		smartgain_cancel: {
 			name: 'SmartGain: cancel',
@@ -74,7 +92,7 @@ function buildFeedbacks(getState) {
 		smartgain_running: {
 			type: 'boolean',
 			name: 'SmartGain is running',
-			defaultStyle: { bgcolor: GREEN, color: BLACK },
+			defaultStyle: { bgcolor: RED, color: WHITE },
 			options: [
 				{
 					id: 'channel',
@@ -89,6 +107,32 @@ function buildFeedbacks(getState) {
 				const wanted = Number(fb.options.channel)
 				return !!sg.running && (wanted === 0 || (sg.channels || []).includes(wanted))
 			},
+		},
+		smartgain_result: {
+			type: 'boolean',
+			name: 'SmartGain last result',
+			description: 'Stays until the next run on that input, or until cleared',
+			defaultStyle: { bgcolor: GREEN, color: BLACK },
+			options: [
+				{
+					id: 'channel',
+					type: 'dropdown',
+					label: 'Input',
+					default: 0,
+					choices: [{ id: 0, label: 'Any input' }, ...channelChoices],
+				},
+				{
+					id: 'result',
+					type: 'dropdown',
+					label: 'Result',
+					default: 'ok',
+					choices: [
+						{ id: 'ok', label: 'Succeeded' },
+						{ id: 'failed', label: 'Failed' },
+					],
+				},
+			],
+			callback: (fb) => resultOf(smartgain().results, fb.options.channel) === fb.options.result,
 		},
 		smartgain_unconfigured: {
 			type: 'boolean',
@@ -139,7 +183,11 @@ function buildVariables(state) {
 			{ variableId: `gain_${number}`, name: `Input ${number} gain (dB)` },
 			{ variableId: `phantom_${number}`, name: `Input ${number} 48V` },
 			{ variableId: `mute_${number}`, name: `Input ${number} mute` },
+			{ variableId: `smartgain_${number}`, name: `Input ${number} SmartGain result` },
 		)
+		const listening = sg.running && (sg.channels || []).includes(number)
+		const result = resultOf(sg.results, number)
+		values[`smartgain_${number}`] = listening ? 'Listening' : result === 'ok' ? 'OK' : result === 'failed' ? 'Failed' : '-'
 		values[`gain_${number}`] = typeof input.gain_db === 'number' ? Math.round(input.gain_db) : '?'
 		values[`phantom_${number}`] = text(input.phantom, 'On', 'Off')
 		values[`mute_${number}`] = text(input.mute, 'Muted', 'Live')
@@ -161,15 +209,20 @@ function buildPresets(label) {
 		}
 	}
 	const press = (actionId, options) => ({ down: [{ actionId, options }], up: [] })
-	const running = (ch) => ({ feedbackId: 'smartgain_running', options: { channel: ch }, style: { bgcolor: GREEN, color: BLACK } })
 	const unconfigured = { feedbackId: 'smartgain_unconfigured', options: {}, style: { bgcolor: rgb(90, 90, 90), color: WHITE } }
+	const running = (ch) => ({ feedbackId: 'smartgain_running', options: { channel: ch }, style: { bgcolor: RED, color: WHITE } })
+	const ok = (ch) => ({ feedbackId: 'smartgain_result', options: { channel: ch, result: 'ok' }, style: { bgcolor: GREEN, color: BLACK } })
+	const failed = (ch) => ({ feedbackId: 'smartgain_result', options: { channel: ch, result: 'failed' }, style: { bgcolor: YELLOW, color: BLACK } })
+	// Later entries win: plain, then the last result, then red while listening.
+	const lamp = (ch) => [unconfigured, ok(ch), failed(ch), running(ch)]
 
 	for (const ch of CHANNELS) {
-		button(`smartgain_${ch}`, 'SmartGain', `SmartGain input ${ch}`, `SMART\\nGAIN ${ch}`, [press('smartgain_start', { channels: [ch] })], [unconfigured, running(ch)])
+		button(`smartgain_${ch}`, 'SmartGain', `SmartGain input ${ch}`, `SMART\\nGAIN ${ch}`, [press('smartgain_start', { channels: [ch] })], lamp(ch))
 	}
-	button('smartgain_12', 'SmartGain', 'SmartGain inputs 1+2', 'SMART\\nGAIN 1+2', [press('smartgain_start', { channels: [1, 2] })], [unconfigured, running(1)])
-	button('smartgain_all', 'SmartGain', 'SmartGain all inputs', 'SMART\\nGAIN ALL', [press('smartgain_start', { channels: CHANNELS })], [unconfigured, running(0)])
+	button('smartgain_12', 'SmartGain', 'SmartGain inputs 1+2', 'SMART\\nGAIN 1+2', [press('smartgain_start', { channels: [1, 2] })], lamp(0))
+	button('smartgain_all', 'SmartGain', 'SmartGain all inputs', 'SMART\\nGAIN ALL', [press('smartgain_start', { channels: CHANNELS })], lamp(0))
 	button('smartgain_cancel', 'SmartGain', 'Cancel SmartGain', 'CANCEL\\nSMARTGAIN', [press('smartgain_cancel', {})], [running(0)])
+	button('smartgain_clear', 'SmartGain', 'Clear SmartGain results', 'CLEAR\\nRESULTS', [press('smartgain_clear', { channels: CHANNELS })])
 	button('status', 'SmartGain', 'EVO status', `EVO\\n$(${label}:status)\\n$(${label}:smartgain)`, [], [{ feedbackId: 'unavailable', options: {}, style: { bgcolor: rgb(160, 0, 0), color: WHITE } }])
 
 	for (const ch of CHANNELS) {
@@ -193,7 +246,7 @@ function buildPresets(label) {
 					rotate_right: [{ actionId: 'gain_adjust', options: { channel: ch, delta: 1 } }],
 				},
 			],
-			[running(ch)],
+			[ok(ch), failed(ch), running(ch)],
 			{ rotaryActions: true },
 		)
 	}

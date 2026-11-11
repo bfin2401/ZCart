@@ -105,7 +105,7 @@ curl -s -X POST http://127.0.0.1:8765/api/lights/set -d '{"targets":["key"],"bri
 In Companion's web interface: **Modules → Import module package**, and import both files from `dist/`:
 
 - `studio-godox-0.1.0.tgz`
-- `studio-evo-0.1.1.tgz`
+- `studio-evo-0.1.2.tgz`
 
 Then **Connections → Add connection**, search `studio`, add both, leave the
 address `127.0.0.1` and port `8765`. Needs Companion 4.0 or newer.

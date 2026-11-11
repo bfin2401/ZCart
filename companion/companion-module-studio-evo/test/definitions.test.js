@@ -130,8 +130,19 @@ test('smartgain with the built-in EVO 8 sequence', async () => {
 			return !!seen
 		})
 		assert.deepStrictEqual(seen, [true, false])
-		// the (mock) unit finishes by itself and the button goes dark
+		// the (mock) unit finishes by itself: no longer listening, result kept
 		await ctx.until((evo) => !evo.smartgain.running)
 		assert.strictEqual(buildVariables(ctx.state).values.smartgain, 'Idle')
+		const result = (channel, wanted) => feedbacks.smartgain_result.callback({ options: { channel, result: wanted } })
+		assert.deepStrictEqual([result(1, 'ok'), result(4, 'ok'), result(2, 'ok'), result(1, 'failed'), result(0, 'ok')], [true, true, false, false, true])
+		assert.strictEqual(buildVariables(ctx.state).values.smartgain_4, 'OK')
+		// starting again on an input drops its old result at once; clearing drops the rest
+		await actions.smartgain_start.callback({ options: { channels: [1] } })
+		assert.strictEqual(ctx.state && result(4, 'ok'), true)
+		await ctx.until((evo) => !('1' in evo.smartgain.results) || evo.smartgain.running)
+		await actions.smartgain_cancel.callback({ options: {} })
+		await actions.smartgain_clear.callback({ options: { channels: [1, 2, 3, 4] } })
+		await ctx.until((evo) => Object.keys(evo.smartgain.results).length === 0 && !evo.smartgain.running)
+		assert.strictEqual(result(0, 'ok'), false)
 	})
 })

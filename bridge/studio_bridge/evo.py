@@ -38,6 +38,7 @@ CS_PHANTOM = 0x0000
 CS_GAIN_FU = 0x0200  # UAC2 FU volume control
 CS_MUTE = 0x0200
 CS_SMARTGAIN_SELECTED = 0x0400
+SMARTGAIN_POLL_S = 0.1
 #: Used until the device has told its own range (a UAC2 RANGE request).
 GAIN_DB_MIN = -8.0
 GAIN_DB_MAX = 58.0
@@ -66,6 +67,13 @@ class Evo:
         self._smartgain_channels: list[int] = []
         self._smartgain_until = 0.0
         self._smartgain_status: bool | None = None
+        #: Outcome of the last run per input: "ok" or "failed".
+        self._smartgain_results: dict[int, str] = {}
+        self._run_active = False
+        self._run_succeeded = False
+        self._run_cancelled = False
+        #: The distinct values the state register showed during the last run.
+        self._run_states: list[str] = []
 
     # ------------------------------------------------------------- lifecycle
 
@@ -218,8 +226,13 @@ class Evo:
 
     async def smartgain(self, action: str, channels: Any = None) -> dict[str, Any]:
         config = self.smartgain_config
+        if action == "clear":
+            for channel in self._channels(channels):
+                self._smartgain_results.pop(channel, None)
+            self.on_change()
+            return self.smartgain_snapshot()
         if action not in ("start", "cancel"):
-            raise EvoError("action must be start or cancel")
+            raise EvoError("action must be start, cancel or clear")
         steps = config.start if action == "start" else config.cancel
         if not steps:
             if action == "start":
@@ -230,6 +243,13 @@ class Evo:
             # Before the first transfer: the unit reports "running" as soon
             # as it enters SmartGain, and a poll may land mid-sequence.
             self._smartgain_channels = selected
+            for channel in selected:
+                self._smartgain_results.pop(channel, None)
+            self._run_succeeded = self._run_cancelled = False
+            self._run_states = []
+        else:
+            # Ending a run on purpose is neither a success nor a failure.
+            self._run_cancelled = True
         for step in steps:
             for request_type, request, value, index, data in step.render(selected):
                 try:
@@ -243,6 +263,9 @@ class Evo:
         if action == "start":
             self._smartgain_channels = selected
             self._smartgain_until = time.monotonic() + config.assume_running_s
+            # The unit was just told to listen. Should the run be over before
+            # the next read, that read must still count as its end.
+            self._run_active = True
         else:
             self._smartgain_until = 0.0
         self._smartgain_status = None
@@ -260,6 +283,8 @@ class Evo:
             "configured": self.smartgain_config.configured,
             "can_cancel": bool(self.smartgain_config.cancel),
             "running": running,
+            "results": {str(channel): result for channel, result in sorted(self._smartgain_results.items())},
+            "last_states": list(self._run_states),
             "channels": self._smartgain_channels if running else [],
         }
 
@@ -273,16 +298,32 @@ class Evo:
                 await self._read_switch("mute", self.mute, CS_MUTE, channel)
             if "gain" not in self._unsupported:
                 await self._read_gain(channel)
+        await self._poll_smartgain(read_inputs=True)
+
+    async def _poll_smartgain(self, *, read_inputs: bool = False) -> None:
+        """Read the SmartGain state register and follow a run to its outcome."""
+
         status = self.smartgain_config.status
-        if status is not None:
-            try:
-                reply = await self._get(status.index, status.value, status.length)
-                self._smartgain_status = status.running(reply)
-            except EvoStall:
-                self._smartgain_status = None
-            if self._smartgain_status and self.smartgain_config.builtin:
-                # Also right when SmartGain was started on the unit itself:
-                # ask it which inputs are selected.
+        if status is None:
+            return
+        try:
+            reply = await self._get(status.index, status.value, status.length)
+        except EvoStall:
+            self._smartgain_status = None
+            return
+        running = status.running(reply)
+        self._smartgain_status = running
+
+        if running:
+            if not self._run_active:
+                # A run the bridge did not start: the unit's own button.
+                self._run_active = True
+                self._run_succeeded = self._run_cancelled = False
+                self._run_states = []
+                read_inputs = True
+            if reply.hex() not in self._run_states:
+                self._run_states.append(reply.hex())
+            if read_inputs and self.smartgain_config.builtin:
                 chosen = []
                 for channel in range(1, INPUTS + 1):
                     try:
@@ -293,13 +334,35 @@ class Evo:
                         chosen.append(channel)
                 if chosen:
                     self._smartgain_channels = chosen
+            if status.succeeded(reply) and not self._run_succeeded:
+                self._run_succeeded = True
+                for channel in self._smartgain_channels:
+                    self._smartgain_results[channel] = "ok"
+        elif self._run_active:
+            self._run_active = False
+            if self._run_cancelled:
+                for channel in self._smartgain_channels:
+                    self._smartgain_results.pop(channel, None)
+            elif status.done and not self._run_succeeded:
+                # Back to idle without ever reading "done".
+                for channel in self._smartgain_channels:
+                    self._smartgain_results[channel] = "failed"
 
     async def _poll_loop(self) -> None:
         was_running = False
+        next_full = 0.0
         while True:
             before = self.snapshot()
+            now = time.monotonic()
             try:
-                await self.refresh()
+                if now >= next_full:
+                    await self.refresh()
+                    interval = self.config.poll_interval or 30.0
+                    if not self.available:
+                        interval = max(interval, 5.0)
+                    next_full = now + interval
+                else:
+                    await self._poll_smartgain()
             except EvoError:
                 pass  # already recorded by transfer()
             except Exception as error:  # noqa: BLE001 - keep the bridge alive
@@ -308,12 +371,12 @@ class Evo:
             if before != self.snapshot() or running != was_running:
                 self.on_change()
             was_running = running
-            interval = self.config.poll_interval or 30.0
-            if not self.available:
-                interval = max(interval, 5.0)
-            elif running:
-                interval = min(interval, 0.5)
-            await asyncio.sleep(interval)
+            if running and self.available:
+                # The "done" value shows only briefly before the unit goes
+                # idle; watch the state register closely while a run lasts.
+                await asyncio.sleep(SMARTGAIN_POLL_S)
+            else:
+                await asyncio.sleep(max(0.05, next_full - time.monotonic()))
 
     def snapshot(self) -> dict[str, Any]:
         return {

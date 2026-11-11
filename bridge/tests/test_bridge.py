@@ -172,7 +172,7 @@ async def test_smartgain_sequence():
     transport = MockTransport()
     evo = Evo(EvoConfig(smartgain=SMARTGAIN), transport)
     result = await evo.smartgain("start", [3, 1])
-    assert result == {"configured": True, "can_cancel": True, "running": True, "channels": [1, 3]}
+    assert result["running"] is True and result["channels"] == [1, 3]
     assert transport.log == [
         (0x21, 1, 0x0300, 0x3A00, bytes.fromhex("01000000")),
         (0x21, 1, 0x0302, 0x3A00, bytes.fromhex("03000000")),
@@ -221,8 +221,7 @@ async def test_http_api(tmp_path):
         assert (await client.post("/api/lights/set", json={"brightness": "x"})).status == 409
 
         reply = await client.post("/api/evo/smartgain", json={"action": "start", "channels": [1]})
-        assert (await reply.json())["smartgain"] == {
-            "configured": True, "can_cancel": True, "running": True, "channels": [1]}
+        assert (await reply.json())["smartgain"]["channels"] == [1]
         assert (await client.post("/api/evo/smartgain", json={"action": "start", "channels": [9]})).status == 409
 
         reply = await client.post("/api/evo/phantom", json={"channel": 1, "state": "on"})
@@ -284,8 +283,8 @@ async def test_smartgain_built_in_sequence():
     ]
     # "Running" follows the unit's own state register, not a timer.
     await evo.refresh()
-    assert evo.smartgain_snapshot() == {"configured": True, "can_cancel": True, "running": True, "channels": [1, 2]}
-    await asyncio.sleep(0.45)
+    assert evo.smartgain_snapshot()["running"] is True and evo.smartgain_snapshot()["channels"] == [1, 2]
+    await asyncio.sleep(0.75)
     await evo.refresh()
     assert evo.smartgain_snapshot()["running"] is False
 
@@ -311,3 +310,53 @@ async def test_smartgain_started_on_the_unit_is_seen():
     transport.registers[(0x3A00, 0x0402)] = bytes.fromhex("01000000")
     await evo.refresh()
     assert evo.smartgain_snapshot()["running"] is True and evo.smartgain_snapshot()["channels"] == [3]
+
+
+async def run_to_end(evo):
+    for _ in range(40):
+        await evo._poll_smartgain()
+        if not evo.smartgain_running():
+            return evo.smartgain_snapshot()
+        await asyncio.sleep(0.05)
+    raise AssertionError("SmartGain never ended")
+
+
+async def test_smartgain_outcome():
+    transport = MockTransport()
+    evo = Evo(EvoConfig(), transport)
+
+    await evo.smartgain("start", [1, 2])
+    assert evo.smartgain_snapshot()["results"] == {}
+    done = await run_to_end(evo)
+    assert done["results"] == {"1": "ok", "2": "ok"}
+    assert done["last_states"] == ["02000000", "04000000"]
+
+    # No usable signal: the unit drops back to idle without "done".
+    transport.outcome = "fail"
+    await evo.smartgain("start", [2])
+    assert evo.smartgain_snapshot()["results"] == {"1": "ok"}  # cleared for the input being redone
+    assert (await run_to_end(evo))["results"] == {"1": "ok", "2": "failed"}
+
+    # Even when it is over before the first read.
+    transport.listen_seconds = 0.0
+    await evo.smartgain("start", [3])
+    assert (await run_to_end(evo))["results"]["3"] == "failed"
+    transport.listen_seconds = 0.4
+
+    # Cancelling is neither.
+    await evo.smartgain("start", [1])
+    await evo._poll_smartgain()
+    await evo.smartgain("cancel")
+    assert (await run_to_end(evo))["results"] == {"2": "failed", "3": "failed"}
+
+    await evo.smartgain("clear", [2])
+    assert evo.smartgain_snapshot()["results"] == {"3": "failed"}
+
+
+async def test_smartgain_outcome_of_a_run_started_on_the_unit():
+    transport = MockTransport()
+    evo = Evo(EvoConfig(), transport)
+    transport.registers[(0x3A00, 0x0403)] = bytes.fromhex("01000000")
+    transport.transfer(0x21, 1, 0x0500, 0x3A00, bytes.fromhex("02000000"))
+    transport.log.clear()
+    assert (await run_to_end(evo))["results"] == {"4": "ok"}

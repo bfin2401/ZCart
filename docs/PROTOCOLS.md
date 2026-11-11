@@ -79,7 +79,7 @@ The ioctl (`_IOWR('E', 0, 264 bytes)`) carries
 |---|---|
 | `GET /api/state` | everything; `?since=<revision>&wait=20` answers when something changes |
 | `POST /api/lights/set` | `{"targets": "all" or [ids], ...}` with any of `power` (on/off/toggle), `brightness`, `brightness_delta`, `kelvin`, `kelvin_delta`, `gm`, `hue`, `hue_delta`, `saturation`, `saturation_delta`, `mode` (cct/hsi/effect), `effect`, `speed`, `resync` |
-| `POST /api/evo/smartgain` | `{"action": "start" or "cancel", "channels": [1, 2]}` |
+| `POST /api/evo/smartgain` | `{"action": "start", "cancel" or "clear", "channels": [1, 2]}`; `clear` forgets the last results |
 | `POST /api/evo/phantom`, `/api/evo/mute` | `{"channel": 1, "state": "on" / "off" / "toggle"}` |
 | `POST /api/evo/gain` | `{"channel": 1, "db": 30}` or `{"channel": 1, "delta": -1}` |
 | `POST /api/evo/raw` | `{"request_type": "0xa1", "value": "0x0000", "index": "0x3a00", "length": 4}` or with `"data": "hex"` to write |
