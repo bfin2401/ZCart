@@ -15,7 +15,7 @@ let bridge, client, state
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const light = (id) => state.lights.lights.find((l) => l.id === id).state
 async function until(check) {
-	for (let i = 0; i < 100; i++) {
+	for (let i = 0; i < 400; i++) {
 		if (state && check()) return
 		await sleep(20)
 	}

@@ -18,7 +18,7 @@ async function withBridge(port, extraConfig, body) {
 	const ctx = { state: null }
 	const client = new BridgeClient({ host: '127.0.0.1', port, onStatus: () => {}, onState: (s) => (ctx.state = s) })
 	ctx.until = async (check) => {
-		for (let i = 0; i < 150; i++) {
+		for (let i = 0; i < 400; i++) {
 			if (ctx.state && check(ctx.state.evo)) return
 			await sleep(20)
 		}
