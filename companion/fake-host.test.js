@@ -98,14 +98,16 @@ test('godox package runs under a module host', async () => {
 
 test('evo package runs under a module host', async () => {
 	await host('evo', 18772, async ({ seen, call, until, port }) => {
-		// connected, but SmartGain not set up yet: a warning, not an error
-		await until(() => seen['set-status'] && seen['set-status'].status === 'unknown_warning', 'status warning')
+		await until(() => seen['set-status'] && seen['set-status'].status === 'ok', 'status ok')
 		assert.ok(seen.setActionDefinitions.actions.some((a) => a.id === 'smartgain_start'))
 		await call('executeAction', action('phantom', { channel: 3, state: 'on' }))
 		await until(() => (seen.setVariableValues.newValues || []).some((v) => v.id === 'phantom_3' && v.value === 'On'), 'phantom variable')
 		assert.strictEqual((await bridgeState(port)).evo.inputs[2].phantom, true)
-		// pressing SmartGain before setup logs the reason instead of failing silently
 		await call('executeAction', action('smartgain_start', { channels: [1] }))
-		await until(() => seen['log-message'] && /not configured yet/.test(seen['log-message'].message), 'log message')
+		await until(() => (seen.setVariableValues.newValues || []).some((v) => v.id === 'smartgain' && v.value === 'Listening'), 'listening')
+		await until(() => (seen.setVariableValues.newValues || []).some((v) => v.id === 'smartgain' && v.value === 'Idle'), 'idle again')
+		// a request the bridge refuses is logged, not lost
+		await call('executeAction', action('gain', { channel: 9, db: 10 }))
+		await until(() => seen['log-message'] && /channel must be/.test(seen['log-message'].message), 'log message')
 	})
 })

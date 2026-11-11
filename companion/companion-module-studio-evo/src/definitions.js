@@ -92,7 +92,7 @@ function buildFeedbacks(getState) {
 		},
 		smartgain_unconfigured: {
 			type: 'boolean',
-			name: 'SmartGain not set up in the bridge',
+			name: 'SmartGain switched off in the bridge',
 			defaultStyle: { bgcolor: rgb(90, 90, 90), color: WHITE },
 			options: [],
 			callback: () => !smartgain().configured,
@@ -130,7 +130,7 @@ function buildVariables(state) {
 	]
 	const values = {
 		status: evo.available ? 'Connected' : 'Disconnected',
-		smartgain: !sg.configured ? 'Not set up' : sg.running ? 'Listening' : 'Idle',
+		smartgain: !sg.configured ? 'Off' : sg.running ? 'Listening' : 'Idle',
 	}
 	const text = (value, on, off) => (value === true ? on : value === false ? off : '?')
 	for (const number of CHANNELS) {

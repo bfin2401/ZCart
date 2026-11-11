@@ -1,15 +1,26 @@
-"""SmartGain: a configured sequence of control transfers.
+"""SmartGain: a sequence of control transfers.
 
-Nobody has published the request the EVO app sends when its SmartGain button
-is pressed, so it is not built in. It is read from the ``[evo.smartgain]``
-table of the config file, to be filled in from a capture of the EVO app (see
-docs/SMARTGAIN.md and tools/usbpcap_decode.py, which prints the table).
+The EVO app has no SmartGain button, so nothing in it sends a request to
+copy. What it does do is read two registers of extension unit 58 while
+SmartGain runs from the unit's own button: a state (selector 5) and a
+per-input "selected" flag (selector 4). Writing those same registers was
+tried on an EVO 8 and does what the button does:
+
+    state = 1                 the unit enters SmartGain, waiting for inputs
+    selected[input] = 1       for each input to set
+    state = 2                 it starts listening
+    state = 0                 cancels
+
+The state reads 2 and 3 while listening, 4 when done, then 0.
+
+That sequence is built in (DEFAULT_*). The ``[evo.smartgain]`` table of the
+config file can replace any part of it, for another model or firmware:
 
     [evo.smartgain]
     assume_running_s = 20          # how long "running" is shown without a status read
 
     [[evo.smartgain.start]]        # one table per transfer, in order
-    value = "0x0300 + ch"          # wValue: a number, or an expression
+    value = "0x0400 + ch"          # wValue: a number, or an expression
     index = 0x3A00                 # wIndex
     data = "01000000"              # hex; may hold {placeholders}
     per_channel = true             # repeat once per selected channel
@@ -18,11 +29,13 @@ docs/SMARTGAIN.md and tools/usbpcap_decode.py, which prints the table).
     [[evo.smartgain.cancel]]
     ...
 
-    [evo.smartgain.status]         # optional: a register that tells "running"
-    value = 0x0400
+    [evo.smartgain.status]         # a register that tells "running"
+    value = 0x0500
     index = 0x3A00
     length = 4
     idle = "00000000"              # anything else reads as "running"
+
+``start = []`` switches SmartGain off.
 
 Names usable in ``value``/``index`` expressions and in ``data`` placeholders:
 
@@ -157,6 +170,8 @@ class SmartGainConfig:
     cancel: tuple[Step, ...] = ()
     status: StatusRead | None = None
     assume_running_s: float = 20.0
+    #: The sequence found on the EVO 8 is in use, so its registers can be read.
+    builtin: bool = False
     channels: tuple[int, ...] = field(default=(1, 2, 3, 4))
 
     @property
@@ -183,8 +198,28 @@ def _steps(raw: Any, name: str) -> tuple[Step, ...]:
     return tuple(steps)
 
 
+#: Extension unit 58 of the EVO 8: wIndex, and the two SmartGain selectors.
+_EU58 = 0x3A00
+_STATE = 0x0500
+_SELECTED = 0x0400
+
+DEFAULT_START: list[dict[str, Any]] = [
+    {"value": _STATE, "index": _EU58, "data": "01000000", "delay_ms": 100},
+    {"value": f"{_SELECTED} + ch", "index": _EU58, "data": "01000000", "per_channel": True, "delay_ms": 50},
+    {"value": _STATE, "index": _EU58, "data": "02000000"},
+]
+DEFAULT_CANCEL: list[dict[str, Any]] = [{"value": _STATE, "index": _EU58, "data": "00000000"}]
+DEFAULT_STATUS: dict[str, Any] = {"value": _STATE, "index": _EU58, "length": 4, "idle": "00000000"}
+
+
 def parse_smartgain(raw: dict[str, Any]) -> SmartGainConfig:
     raw = dict(raw)
+    builtin = "start" not in raw
+    if builtin:
+        # Nothing of their own: the sequence found on the EVO 8.
+        raw["start"] = DEFAULT_START
+        raw.setdefault("cancel", DEFAULT_CANCEL)
+        raw.setdefault("status", DEFAULT_STATUS)
     status = None
     if (status_raw := raw.pop("status", None)) is not None:
         try:
@@ -201,6 +236,7 @@ def parse_smartgain(raw: dict[str, Any]) -> SmartGainConfig:
         cancel=_steps(raw.pop("cancel", None), "cancel"),
         status=status,
         assume_running_s=float(raw.pop("assume_running_s", 20.0)),
+        builtin=builtin,
     )
     if raw:
         raise SmartGainConfigError(f"unknown [evo.smartgain] option(s): {', '.join(sorted(raw))}")

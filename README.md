@@ -20,8 +20,8 @@ modules talk to it.
 
 ## What is and is not proven
 
-Nothing here has been run against the real lights or the real EVO 8 yet. It was
-built from other people's reverse-engineering and tested against stand-ins.
+Built from other people's reverse-engineering, tested against stand-ins, and so
+far checked on one LE200Bi and one EVO 8. The UP150R is still untried.
 
 | Part | Status |
 |---|---|
@@ -29,11 +29,11 @@ built from other people's reverse-engineering and tested against stand-ins.
 | Companion modules | Tests pass against the bridge in mock mode, and the built packages run under a stand-in for Companion's module host. Not yet loaded in Companion itself. |
 | Kernel module `evo_ctl` | Compiles cleanly (Linux 6.8 headers). Not yet loaded on a Pi. |
 | Godox protocol | Uses the `godox-mesh-bt` library, which its authors verified on Godox SL-series lights. |
-| LE200Bi | In Godox's catalogue as a mesh light; ranges and effects taken from there. Not hardware-verified by anyone I found. |
+| LE200Bi | Paired and controlled (brightness, colour temperature) on a real light. |
 | UP150R | **Not in any published model list.** Assumed to use the same mesh protocol as every other Godox Light app fixture, with capabilities from its spec sheet. Step 2 below tells you within a minute whether that holds. |
 | EVO 8 48V | Request sniffed from the EVO app on a real EVO 8 (evoctl project). |
-| EVO 8 mute, gain | Confirmed on the EVO 4 by others; EVO 8 by analogy. A wrong guess is refused by the device and shown as unsupported. |
-| **EVO 8 SmartGain** | **Request unknown.** Nobody has published it. One capture on your Windows PC finds it: `docs/SMARTGAIN.md`. |
+| EVO 8 mute, gain | Read back correctly from a real EVO 8; writing them is confirmed on the EVO 4 only. A refused request shows as unsupported. |
+| EVO 8 SmartGain | Works: the registers were found from USB captures and each step was tried by hand on an EVO 8. Built in; no setup. |
 
 ## Install
 
@@ -116,9 +116,11 @@ temperature, hue and gain, all-lights buttons, SmartGain per input.
 
 ## SmartGain
 
-Follow `docs/SMARTGAIN.md`: one short USB capture on the Windows PC, one script,
-a few lines pasted into `/etc/studio-bridge/config.toml`. Until then the
-SmartGain buttons are grey and the `studio-evo` connection shows a warning.
+Built in. The "SmartGain: start" action does what the green button on the unit
+does, for the inputs chosen on the Companion button, and the button stays lit
+until the EVO reports it has finished. A run started on the unit itself shows
+up too. How it was found, and how to adapt it to another model, is in
+`docs/SMARTGAIN.md`.
 
 ## Things to know
 

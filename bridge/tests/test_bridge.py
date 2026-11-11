@@ -210,7 +210,7 @@ async def test_http_api(tmp_path):
     try:
         state = await (await client.get("/api/state")).json()
         assert [l["id"] for l in state["lights"]["lights"]] == ["key", "fill", "back-l", "back-r", "spot"]
-        assert state["evo"]["smartgain"]["configured"] is False
+        assert state["evo"]["smartgain"]["configured"] is True
 
         reply = await client.post("/api/lights/set", json={"targets": ["spot"], "brightness": 70})
         assert reply.status == 200
@@ -221,7 +221,9 @@ async def test_http_api(tmp_path):
         assert (await client.post("/api/lights/set", json={"brightness": "x"})).status == 409
 
         reply = await client.post("/api/evo/smartgain", json={"action": "start", "channels": [1]})
-        assert reply.status == 409 and "not configured" in (await reply.json())["error"]
+        assert (await reply.json())["smartgain"] == {
+            "configured": True, "can_cancel": True, "running": True, "channels": [1]}
+        assert (await client.post("/api/evo/smartgain", json={"action": "start", "channels": [9]})).status == 409
 
         reply = await client.post("/api/evo/phantom", json={"channel": 1, "state": "on"})
         assert (await reply.json()) == {"ok": True, "phantom": True}
@@ -267,3 +269,45 @@ async def test_repeating_a_request_sends_it_again(tmp_path):
     assert [f[0] for f in frames] == ["power", "power", "cct"]
     assert frames[-1][2]["cct"] == 3200 and frames[-1][2]["brightness"] == 20.0
     await manager.stop()
+
+
+async def test_smartgain_built_in_sequence():
+    # What was tried by hand on an EVO 8: state 1, select the inputs, state 2.
+    transport = MockTransport()
+    evo = Evo(EvoConfig(), transport)
+    await evo.smartgain("start", [2, 1])
+    assert transport.log == [
+        (0x21, 1, 0x0500, 0x3A00, bytes.fromhex("01000000")),
+        (0x21, 1, 0x0400, 0x3A00, bytes.fromhex("01000000")),
+        (0x21, 1, 0x0401, 0x3A00, bytes.fromhex("01000000")),
+        (0x21, 1, 0x0500, 0x3A00, bytes.fromhex("02000000")),
+    ]
+    # "Running" follows the unit's own state register, not a timer.
+    await evo.refresh()
+    assert evo.smartgain_snapshot() == {"configured": True, "can_cancel": True, "running": True, "channels": [1, 2]}
+    await asyncio.sleep(0.45)
+    await evo.refresh()
+    assert evo.smartgain_snapshot()["running"] is False
+
+    await evo.smartgain("start", [4])
+    await evo.smartgain("cancel")
+    assert transport.registers[(0x3A00, 0x0500)] == bytes(4)
+    await evo.refresh()
+    assert evo.smartgain_snapshot()["running"] is False
+
+
+async def test_smartgain_can_be_switched_off():
+    evo = Evo(EvoConfig(smartgain={"start": []}), MockTransport())
+    assert evo.smartgain_snapshot()["configured"] is False
+    with pytest.raises(Exception, match="switched off"):
+        await evo.smartgain("start", [1])
+
+
+async def test_smartgain_started_on_the_unit_is_seen():
+    transport = MockTransport()
+    evo = Evo(EvoConfig(), transport)
+    # as if the buttons on the EVO were pressed: state 1, input 3 chosen
+    transport.registers[(0x3A00, 0x0500)] = bytes.fromhex("01000000")
+    transport.registers[(0x3A00, 0x0402)] = bytes.fromhex("01000000")
+    await evo.refresh()
+    assert evo.smartgain_snapshot()["running"] is True and evo.smartgain_snapshot()["channels"] == [3]

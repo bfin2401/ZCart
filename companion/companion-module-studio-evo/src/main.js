@@ -58,7 +58,7 @@ class EvoInstance extends InstanceBase {
 		} else if (!evo.available) {
 			this.updateStatus(InstanceStatus.ConnectionFailure, evo.error || 'EVO 8 not connected')
 		} else if (!evo.smartgain.configured) {
-			this.updateStatus(InstanceStatus.UnknownWarning, 'Connected; SmartGain not set up in the bridge yet')
+			this.updateStatus(InstanceStatus.UnknownWarning, 'Connected; SmartGain is switched off in the bridge config')
 		} else {
 			this.updateStatus(InstanceStatus.Ok)
 		}

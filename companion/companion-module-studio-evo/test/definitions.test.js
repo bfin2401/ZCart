@@ -49,7 +49,7 @@ index = 0x3A00
 data = "00000000"
 `
 
-test('smartgain, once configured in the bridge', async () => {
+test('smartgain with a sequence from the bridge config', async () => {
 	await withBridge(18766, SMARTGAIN, async (ctx) => {
 		const actions = buildActions(ctx.post)
 		const feedbacks = buildFeedbacks(() => ctx.state)
@@ -76,11 +76,11 @@ test('smartgain, once configured in the bridge', async () => {
 	})
 })
 
-test('before setup, smartgain says what is missing; the other controls work', async () => {
-	await withBridge(18767, '', async (ctx) => {
+test('smartgain switched off says so; the other controls work', async () => {
+	await withBridge(18767, '[evo.smartgain]\nstart = []\n', async (ctx) => {
 		const feedbacks = buildFeedbacks(() => ctx.state)
 		assert.strictEqual(feedbacks.smartgain_unconfigured.callback({ options: {} }), true)
-		await assert.rejects(ctx.post('/api/evo/smartgain', { action: 'start', channels: [1] }), /not configured yet/)
+		await assert.rejects(ctx.post('/api/evo/smartgain', { action: 'start', channels: [1] }), /switched off/)
 
 		const actions = buildActions(ctx.post)
 		await actions.phantom.callback({ options: { channel: 2, state: 'toggle' } })
@@ -93,7 +93,7 @@ test('before setup, smartgain says what is missing; the other controls work', as
 		const { values } = buildVariables(ctx.state)
 		assert.strictEqual(values.gain_1, 17)
 		assert.strictEqual(values.phantom_2, 'On')
-		assert.strictEqual(values.smartgain, 'Not set up')
+		assert.strictEqual(values.smartgain, 'Off')
 	})
 })
 
@@ -113,4 +113,25 @@ test('variables and presets refer to things that exist', () => {
 		for (const [, name] of preset.style.text.matchAll(/\$\(evo:([^)]+)\)/g)) assert.ok(name in values, name)
 	}
 	assert.strictEqual(feedbacks.unavailable.callback({ options: {} }), true)
+})
+
+test('smartgain with the built-in EVO 8 sequence', async () => {
+	await withBridge(18768, '[evo]\npoll_interval = 0.2\n', async (ctx) => {
+		const actions = buildActions(ctx.post)
+		const feedbacks = buildFeedbacks(() => ctx.state)
+		assert.strictEqual(feedbacks.smartgain_unconfigured.callback({ options: {} }), false)
+		await actions.smartgain_start.callback({ options: { channels: [1, 4] } })
+		// the mock unit listens only briefly, so look at the moment it is seen running
+		let seen = null
+		await ctx.until((evo) => {
+			if (evo.smartgain.running && !seen) {
+				seen = [4, 2].map((channel) => feedbacks.smartgain_running.callback({ options: { channel } }))
+			}
+			return !!seen
+		})
+		assert.deepStrictEqual(seen, [true, false])
+		// the (mock) unit finishes by itself and the button goes dark
+		await ctx.until((evo) => !evo.smartgain.running)
+		assert.strictEqual(buildVariables(ctx.state).values.smartgain, 'Idle')
+	})
 })

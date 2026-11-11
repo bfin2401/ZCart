@@ -17,12 +17,5 @@ transport = "auto"      # "auto"/"kmod": /dev/evo8 from the evo_ctl kernel modul
                         # "libusb": no kernel module, but the Pi cannot use the EVO for audio meanwhile
 poll_interval = 2.0     # seconds between read-backs of 48V / mute / gain
 
-# SmartGain: fill in from a capture of the EVO app. See docs/SMARTGAIN.md.
-#
-# [evo.smartgain]
-# assume_running_s = 20
-#
-# [[evo.smartgain.start]]
-# value = 0x0000
-# index = 0x3a00
-# data = "00000000"
+# SmartGain is built in for the EVO 8. A [evo.smartgain] table replaces the
+# built-in sequence (see docs/SMARTGAIN.md); `start = []` switches it off.

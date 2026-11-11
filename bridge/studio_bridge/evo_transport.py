@@ -25,6 +25,7 @@ import fcntl
 import os
 import struct
 import threading
+import time
 from typing import Protocol
 
 VENDOR_ID = 0x2708
@@ -182,13 +183,18 @@ class MockTransport:
     def __init__(self) -> None:
         self.log: list[tuple[int, int, int, int, bytes | int]] = []
         self.registers: dict[tuple[int, int], bytes] = {}
+        self.listen_seconds = 0.4
+        self._listening_until = 0.0
         for channel in range(4):
             self.registers[(0x3A00, 0x0000 | channel)] = bytes(4)  # phantom
             self.registers[(0x3A00, 0x0200 | channel)] = bytes(4)  # input mute
+            self.registers[(0x3A00, 0x0400 | channel)] = bytes(4)  # SmartGain: selected
             self.registers[(0x0B00, 0x0200 | (channel + 1))] = (20 * 256).to_bytes(2, "little", signed=True)
+        self.registers[(0x3A00, 0x0500)] = bytes(4)  # SmartGain: state
 
     def transfer(self, request_type: int, request: int, value: int, index: int, data: bytes | int) -> bytes:
         self.log.append((request_type, request, value, index, data))
+        self._finish_smartgain()
         key = (index, value)
         if _direction_in(request_type):
             if request == RANGE and index == 0x0B00:
@@ -197,7 +203,17 @@ class MockTransport:
                 raise EvoStall(errno.EPIPE, "request refused by the device (STALL)")
             return self.registers[key][: int(data)]  # type: ignore[arg-type]
         self.registers[key] = bytes(data)  # type: ignore[arg-type]
+        if key == (0x3A00, 0x0500) and bytes(data)[:1] == b"\x02":
+            self._listening_until = time.monotonic() + self.listen_seconds
         return b""
+
+    def _finish_smartgain(self) -> None:
+        # Like the unit: listening ends by itself, and the inputs deselect.
+        if self._listening_until and time.monotonic() >= self._listening_until:
+            self._listening_until = 0.0
+            self.registers[(0x3A00, 0x0500)] = bytes(4)
+            for channel in range(4):
+                self.registers[(0x3A00, 0x0400 | channel)] = bytes(4)
 
     def close(self) -> None:
         pass

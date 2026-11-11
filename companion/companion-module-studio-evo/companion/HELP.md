@@ -15,7 +15,5 @@ mute, set and adjust preamp gain.
 **Feedbacks**: SmartGain is running, SmartGain not set up, 48V is on, input is
 muted, EVO not connected.
 
-**SmartGain needs one-time setup.** The request the EVO app sends for SmartGain
-has to be captured once and put in the bridge's config file; until then the
-SmartGain buttons show grey and the connection shows a warning. The bridge's
-`docs/SMARTGAIN.md` walks through it.
+SmartGain works as on the unit: it listens on the chosen inputs and sets their gain.
+The button stays lit until the EVO reports it has finished.

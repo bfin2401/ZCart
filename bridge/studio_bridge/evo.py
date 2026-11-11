@@ -6,11 +6,11 @@ Where each control's layout comes from, and how sure it is:
 Control         Request                  Evidence
 ==============  =======================  ====================================
 Phantom 48V     EU58, CS 0, CN 0-3, 4 B  sniffed from the EVO app on an EVO 8
-                                         (evoctl, doc/usb_control_messages)
-Input mute      EU58, CS 2, CN 0-3, 4 B  confirmed on EVO 4; EVO 8 by analogy
-Preamp gain     FU11, CS 2, CN 1-4, 2 B  standard UAC2 feature unit; confirmed
-                                         on EVO 4, EVO 8 by analogy
-SmartGain       unknown                  see smartgain.py
+Input mute      EU58, CS 2, CN 0-3, 4 B  confirmed on EVO 4; reads on an EVO 8
+Preamp gain     FU11, CS 2, CN 1-4, 2 B  standard UAC2 feature unit; reads on
+                                         an EVO 8
+SmartGain       EU58, CS 4 and 5         tried by hand on an EVO 8
+                                         (see smartgain.py)
 ==============  =======================  ====================================
 
 A control the device refuses (USB STALL) is reported as unsupported and left
@@ -37,6 +37,7 @@ FU11 = 0x0B00  # wIndex: feature unit 11 (preamps), interface 0
 CS_PHANTOM = 0x0000
 CS_GAIN_FU = 0x0200  # UAC2 FU volume control
 CS_MUTE = 0x0200
+CS_SMARTGAIN_SELECTED = 0x0400
 #: Used until the device has told its own range (a UAC2 RANGE request).
 GAIN_DB_MIN = -8.0
 GAIN_DB_MAX = 58.0
@@ -222,12 +223,13 @@ class Evo:
         steps = config.start if action == "start" else config.cancel
         if not steps:
             if action == "start":
-                raise EvoError(
-                    "SmartGain is not configured yet: its USB request has to be captured from the "
-                    "EVO app once and put in [evo.smartgain] of the config (see docs/SMARTGAIN.md)"
-                )
+                raise EvoError("SmartGain is switched off in the bridge config ([evo.smartgain] start = [])")
             raise EvoError("no [[evo.smartgain.cancel]] transfers are configured")
         selected = self._channels(channels)
+        if action == "start":
+            # Before the first transfer: the unit reports "running" as soon
+            # as it enters SmartGain, and a poll may land mid-sequence.
+            self._smartgain_channels = selected
         for step in steps:
             for request_type, request, value, index, data in step.render(selected):
                 try:
@@ -278,6 +280,19 @@ class Evo:
                 self._smartgain_status = status.running(reply)
             except EvoStall:
                 self._smartgain_status = None
+            if self._smartgain_status and self.smartgain_config.builtin:
+                # Also right when SmartGain was started on the unit itself:
+                # ask it which inputs are selected.
+                chosen = []
+                for channel in range(1, INPUTS + 1):
+                    try:
+                        flag = await self._get(EU58, CS_SMARTGAIN_SELECTED | (channel - 1), 4)
+                    except EvoStall:
+                        break
+                    if flag[:1] not in (b"", b"\x00"):
+                        chosen.append(channel)
+                if chosen:
+                    self._smartgain_channels = chosen
 
     async def _poll_loop(self) -> None:
         was_running = False
