@@ -26,7 +26,7 @@ import time
 from typing import Any, Callable
 
 from .config import EvoConfig
-from .evo_transport import CUR, GET, SET, EvoStall, EvoUnavailable, Transport, open_transport
+from .evo_transport import CUR, GET, RANGE, SET, EvoStall, EvoUnavailable, Transport, open_transport
 from .smartgain import SmartGainConfig, parse_smartgain
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,8 @@ FU11 = 0x0B00  # wIndex: feature unit 11 (preamps), interface 0
 CS_PHANTOM = 0x0000
 CS_GAIN_FU = 0x0200  # UAC2 FU volume control
 CS_MUTE = 0x0200
-GAIN_DB_MIN = 0.0
+#: Used until the device has told its own range (a UAC2 RANGE request).
+GAIN_DB_MIN = -8.0
 GAIN_DB_MAX = 58.0
 
 
@@ -59,6 +60,7 @@ class Evo:
         self.phantom: list[bool | None] = [None] * INPUTS
         self.mute: list[bool | None] = [None] * INPUTS
         self.gain_db: list[float | None] = [None] * INPUTS
+        self.gain_range: tuple[float, float] | None = None
         self._unsupported: set[str] = set()
         self._smartgain_channels: list[int] = []
         self._smartgain_until = 0.0
@@ -157,6 +159,21 @@ class Evo:
     async def set_mute(self, channel: Any, state: Any) -> bool:
         return await self._switch("mute", self.mute, CS_MUTE, channel, state)
 
+    async def _read_gain_range(self) -> tuple[float, float]:
+        if self.gain_range is None:
+            low, high = GAIN_DB_MIN, GAIN_DB_MAX
+            try:
+                # wNumSubRanges, then min / max / resolution, each dB x 256
+                reply = await self.transfer(GET, RANGE, CS_GAIN_FU | 1, FU11, 8)
+                if len(reply) >= 6:
+                    _, raw_low, raw_high = struct.unpack("<Hhh", reply[:6])
+                    if raw_low < raw_high:
+                        low, high = raw_low / 256.0, raw_high / 256.0
+            except EvoStall:
+                pass
+            self.gain_range = (low, high)
+        return self.gain_range
+
     async def _read_gain(self, channel: int) -> float | None:
         try:
             reply = await self._get(FU11, CS_GAIN_FU | channel, 2)
@@ -179,7 +196,8 @@ class Evo:
             if current is None:
                 raise EvoError("cannot read the current gain from the EVO")
             db = current + float(delta)
-        wanted = float(round(max(GAIN_DB_MIN, min(GAIN_DB_MAX, float(db)))))
+        low, high = await self._read_gain_range()
+        wanted = float(round(max(low, min(high, float(db)))))
         try:
             await self._set(FU11, CS_GAIN_FU | channel, struct.pack("<h", int(wanted * 256)))
         except EvoStall as error:
@@ -296,6 +314,7 @@ class Evo:
                 }
                 for channel in range(INPUTS)
             ],
+            "gain_range_db": list(self.gain_range) if self.gain_range else None,
             "unsupported": sorted(self._unsupported),
             "smartgain": self.smartgain_snapshot(),
         }

@@ -196,13 +196,38 @@ class LightManager:
 
         lights = self.resolve(targets)
         for light in lights:
-            light.desired = self._merge(light, changes)
-            if changes.get("resync"):
+            merged = self._merge(light, changes)
+            # A request that changes nothing here is still a request: the
+            # light may have been changed on its own panel since, which the
+            # bridge cannot see. Send it again rather than stay silent.
+            repeated = merged == light.desired and light.sent == merged and self._concerns(light, changes)
+            if changes.get("resync") or repeated:
                 light.sent = None
+            light.desired = merged
         self._wake.set()
         self._schedule_shadow_save()
         self.on_change()
         return [light.to_dict() for light in lights]
+
+    @staticmethod
+    def _concerns(light: _Light, changes: dict[str, Any]) -> bool:
+        """Whether a request asks this light for anything it can do.
+
+        A colour or effect sent to several lights also reaches lights that
+        lack it; for those there is nothing to repeat.
+        """
+
+        profile = light.profile
+        keys = {key for key, value in changes.items() if value is not None}
+        if not profile.hsi:
+            keys = {key for key in keys if not key.startswith(("hue", "saturation"))}
+            if changes.get("mode") == "hsi":
+                keys.discard("mode")
+        if changes.get("effect") is not None and changes["effect"] not in profile.effects:
+            keys -= {"effect", "speed"}
+            if changes.get("mode") == "effect":
+                keys.discard("mode")
+        return bool(keys)
 
     def _merge(self, light: _Light, changes: dict[str, Any]) -> LightState:
         state = replace(light.desired)

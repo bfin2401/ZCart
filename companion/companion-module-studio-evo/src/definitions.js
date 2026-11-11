@@ -55,7 +55,7 @@ function buildActions(post) {
 		},
 		gain: {
 			name: 'Set preamp gain',
-			options: [channel, { id: 'db', type: 'number', label: 'Gain (dB)', default: 30, min: 0, max: 58 }],
+			options: [channel, { id: 'db', type: 'number', label: 'Gain (dB)', default: 30, min: -8, max: 58 }],
 			callback: (action) =>
 				post('/api/evo/gain', { channel: Number(action.options.channel), db: Number(action.options.db) }),
 		},

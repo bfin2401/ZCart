@@ -252,3 +252,18 @@ def test_probe_sweep_and_diff():
     lines = evo_probe.diff(before, evo_probe.sweep(transport, pause=0))
     assert len(lines) == 1 and "wValue=0x0002" in lines[0] and "phantom" in lines[0]
     assert all(entry[0] == 0xA1 for entry in transport.log)  # never writes
+
+
+async def test_repeating_a_request_sends_it_again(tmp_path):
+    # The light was changed on its own panel in between; the bridge cannot
+    # know, so the same request must reach the light a second time.
+    manager, frames = make_lights(tmp_path)
+    await manager.start()
+    manager.apply(["spot"], {"brightness": 20, "kelvin": 3200})
+    await settle(manager)
+    frames.clear()
+    manager.apply(["spot"], {"brightness": 20, "kelvin": 3200})
+    await settle(manager)
+    assert [f[0] for f in frames] == ["power", "power", "cct"]
+    assert frames[-1][2]["cct"] == 3200 and frames[-1][2]["brightness"] == 20.0
+    await manager.stop()
