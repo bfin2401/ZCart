@@ -1,0 +1,21 @@
+{
+	"id": "studio-godox",
+	"name": "studio-godox",
+	"shortname": "godox",
+	"description": "Godox Bluetooth Mesh lights (LiteWafer UP150R, Litemons LE200Bi and others) through the studio-bridge service",
+	"version": "0.0.0",
+	"license": "MIT",
+	"repository": "local",
+	"bugs": "local",
+	"maintainers": [{ "name": "studio-control" }],
+	"legacyIds": [],
+	"runtime": {
+		"type": "node22",
+		"api": "nodejs-ipc",
+		"apiVersion": "0.0.0",
+		"entrypoint": "../src/main.js"
+	},
+	"manufacturer": "Godox",
+	"products": ["LiteWafer UP150R", "Litemons LE200Bi", "Bluetooth Mesh lights"],
+	"keywords": ["light", "led", "bluetooth", "godox"]
+}

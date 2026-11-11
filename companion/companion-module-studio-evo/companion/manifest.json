@@ -1,0 +1,21 @@
+{
+	"id": "studio-evo",
+	"name": "studio-evo",
+	"shortname": "evo",
+	"description": "Audient EVO 8: SmartGain, 48V, mute and preamp gain through the studio-bridge service",
+	"version": "0.0.0",
+	"license": "MIT",
+	"repository": "local",
+	"bugs": "local",
+	"maintainers": [{ "name": "studio-control" }],
+	"legacyIds": [],
+	"runtime": {
+		"type": "node22",
+		"api": "nodejs-ipc",
+		"apiVersion": "0.0.0",
+		"entrypoint": "../src/main.js"
+	},
+	"manufacturer": "Audient",
+	"products": ["EVO 8"],
+	"keywords": ["audio", "interface", "smartgain", "preamp"]
+}

@@ -1,0 +1,28 @@
+# studio-bridge configuration. Every value shown is the default.
+
+# state_dir = "/var/lib/studio-bridge"     # mesh keys, light list, last light state
+
+[http]
+host = "127.0.0.1"      # Companion on the same Pi. Use "0.0.0.0" only on a trusted network: there is no password.
+port = 8765
+
+[godox]
+enabled = true
+power_repeat = 2        # the Godox app sends on/off twice
+min_interval = 0.06     # seconds between frames; faster dial turns collapse into the latest value
+
+[evo]
+enabled = true
+transport = "auto"      # "auto"/"kmod": /dev/evo8 from the evo_ctl kernel module (audio keeps working)
+                        # "libusb": no kernel module, but the Pi cannot use the EVO for audio meanwhile
+poll_interval = 2.0     # seconds between read-backs of 48V / mute / gain
+
+# SmartGain: fill in from a capture of the EVO app. See docs/SMARTGAIN.md.
+#
+# [evo.smartgain]
+# assume_running_s = 20
+#
+# [[evo.smartgain.start]]
+# value = 0x0000
+# index = 0x3a00
+# data = "00000000"

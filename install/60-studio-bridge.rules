@@ -1,0 +1,4 @@
+# /dev/evo8 from the evo_ctl kernel module
+KERNEL=="evo[48]", SUBSYSTEM=="misc", GROUP="studio-bridge", MODE="0660"
+# raw USB access, used only with transport = "libusb"
+SUBSYSTEM=="usb", ATTR{idVendor}=="2708", ATTR{idProduct}=="0007", GROUP="studio-bridge", MODE="0660"

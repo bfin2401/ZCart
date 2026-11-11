@@ -1,0 +1,19 @@
+{
+	"name": "studio-godox",
+	"version": "0.1.0",
+	"main": "src/main.js",
+	"license": "MIT",
+	"scripts": {
+		"test": "node --test",
+		"package": "companion-module-build"
+	},
+	"engines": {
+		"node": "^18.18 || ^22.8"
+	},
+	"dependencies": {
+		"@companion-module/base": "~1.12.1"
+	},
+	"devDependencies": {
+		"@companion-module/tools": "^2.9.1"
+	}
+}

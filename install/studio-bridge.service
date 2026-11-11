@@ -1,0 +1,21 @@
+[Unit]
+Description=studio-bridge (Godox mesh lights and Audient EVO 8 for Companion)
+After=bluetooth.service network.target
+Wants=bluetooth.service
+
+[Service]
+User=studio-bridge
+Group=studio-bridge
+SupplementaryGroups=bluetooth
+StateDirectory=studio-bridge
+StateDirectoryMode=0700
+ExecStart=/opt/studio-bridge/venv/bin/studio-bridge run
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
