@@ -171,14 +171,31 @@ async def _add(args: argparse.Namespace, config: Config) -> int:
     store.save()
     node_address = store.next_node_address()
     print(f"Provisioning {address} as node 0x{node_address:04x} ...")
-    state = await ProvisioningSession(
-        address=address,
-        net_key=bytes.fromhex(store.network_key),
-        key_index=0,
-        iv_index=store.iv_index,
-        unicast_address=node_address,
-        provisioner_address=store.provisioner_address,
-    ).run()
+    state = None
+    for attempt in range(1, 5):
+        try:
+            state = await ProvisioningSession(
+                address=address,
+                net_key=bytes.fromhex(store.network_key),
+                key_index=0,
+                iv_index=store.iv_index,
+                unicast_address=node_address,
+                provisioner_address=store.provisioner_address,
+            ).run()
+            break
+        except Exception as error:  # noqa: BLE001 - Bluetooth connects fail often; retried, then reported
+            # Nothing is kept by the light until the exchange completes, so
+            # starting over is safe.
+            reason = str(error) or type(error).__name__
+            print(f"  attempt {attempt} failed: {reason}")
+            await asyncio.sleep(2.0)
+    if state is None:
+        raise SystemExit(
+            "Could not connect to the light. It is still unpaired; nothing was changed.\n"
+            "Try: move the Pi within a few metres, close the Godox app on any phone nearby,\n"
+            "run 'bluetoothctl remove " + address + "' and 'sudo systemctl restart bluetooth',\n"
+            "put the light back in pairing mode, then run this command again."
+        )
     record = LightRecord(
         id=args.id,
         name=args.name or args.id,
