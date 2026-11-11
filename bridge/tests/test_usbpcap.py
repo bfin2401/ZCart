@@ -45,10 +45,10 @@ PACKETS = [
     (1_000_000, usbpcap(1, 0, 0, setup(0x21, 0x0001, 0x3A00, 4) + bytes.fromhex("01000000"))),
     (1_001_000, usbpcap(1, 3, 1, b"")),
     # a read answered in the "complete" packet
-    (2_000_000, usbpcap(2, 0, 0, setup(0xA1, 0x0500, 0x3A00, 4))),
+    (2_000_000, usbpcap(2, 0, 0, setup(0xA1, 0x0900, 0x3A00, 4))),
     (2_001_000, usbpcap(2, 3, 1, bytes.fromhex("02000000"))),
     # old-style: separate data and status stages; an unknown write
-    (3_000_000, usbpcap(3, 0, 0, setup(0x21, 0x0400, 0x3A00, 4))),
+    (3_000_000, usbpcap(3, 0, 0, setup(0x21, 0x0800, 0x3A00, 4))),
     (3_000_500, usbpcap(3, 1, 0, bytes.fromhex("0f000000"))),
     (3_001_000, usbpcap(3, 2, 1, b"")),
     # noise: another device, a standard request, a bulk packet
@@ -61,11 +61,11 @@ def check(blob):
     found = decode.audio_control(decode.transfers(blob), None)
     assert [(t.value, t.index, t.data.hex(), t.label) for t in found] == [
         (0x0001, 0x3A00, "01000000", "phantom 48V"),
-        (0x0500, 0x3A00, "02000000", "NEW"),
-        (0x0400, 0x3A00, "0f000000", "NEW"),
+        (0x0900, 0x3A00, "02000000", "NEW"),
+        (0x0800, 0x3A00, "0f000000", "NEW"),
     ]
     assert found[0].time == 0.0 and abs(found[2].time - 2.0) < 1e-6 and found[0].device == 5
-    assert "value = 0x0400" in decode.toml(found[2]) and 'data = "0f000000"' in decode.toml(found[2])
+    assert "value = 0x0800" in decode.toml(found[2]) and 'data = "0f000000"' in decode.toml(found[2])
 
 
 def test_pcapng():
