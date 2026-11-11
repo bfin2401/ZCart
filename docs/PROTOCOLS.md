@@ -43,10 +43,25 @@ of interface 0. `wIndex = entity << 8`, `wValue = selector << 8 | channel`.
 | Preamp gain | `0x0B00` | `0x0200 + n` | 2 bytes, dB × 256 | UAC2 feature unit |
 | Output volume | `0x3B00` | `0x0000` / `0x0002` | 4 bytes | sniffed on EVO 8 (not used) |
 | Monitor mixer | `0x3C00` | `0x0100 + crosspoint` | 2 bytes | sniffed on EVO 8 (not used) |
-| SmartGain | ? | ? | ? | to be captured |
+| SmartGain: input n selected | `0x3A00` | `0x0400 + (n-1)` | 4 bytes LE, 0/1 | read in captures of an EVO 8 |
+| SmartGain: state | `0x3A00` | `0x0500` | 4 bytes LE, see below | read in captures of an EVO 8 |
+| Change notifications | `0x3E00` | `0x0600` | `selector, channel, 00, entity`; `ff .. .. ff` when empty | read in captures of an EVO 8 |
+| Meters | `0x3C00` | `0x0000`–`0x0003` | 20/8/10/4 bytes | read in captures of an EVO 8 |
 
-Extension units 50, 51 and 57 are in the descriptors with no known controls;
-SmartGain is most likely an unlisted selector on unit 58.
+### SmartGain, as seen from the unit's own button
+
+The Windows EVO app has no SmartGain button, so captures were made while
+pressing the button on the unit. The app polls the notification queue about ten
+times a second and reads whichever register it names. During a SmartGain run:
+
+1. button pressed: state reads `1` (choosing inputs)
+2. input button pressed: "input selected" for that input reads `1`
+3. button pressed again: state reads `2`, then `3`, while preamp gain steps
+4. finished: state reads `4`, then `0`; cancelled: straight to `0`. "Input selected" returns to `0`.
+
+Whether writing these registers starts SmartGain is the open question; the
+app never writes them. Earlier work on the EVO 4 found selector 5 writable.
+
 
 ### Why a kernel module
 

@@ -32,6 +32,8 @@ KNOWN: dict[tuple[int, int], str] = {
     (0x3A00, 0x00): "phantom 48V",
     (0x3A00, 0x01): "preamp gain (mirror)",
     (0x3A00, 0x02): "input mute",
+    (0x3A00, 0x04): "SmartGain: input selected",
+    (0x3A00, 0x05): "SmartGain: state",
     (0x3B00, 0x00): "output volume (mirror)",
     (0x3B00, 0x01): "output mute",
     (0x0A00, 0x02): "output volume",
